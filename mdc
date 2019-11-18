@@ -1,0 +1,71 @@
+
+#!/bin/bash
+
+{
+FILE_NOEXT=$(basename $1)
+FILE=$(basename $1 .md)
+FILE_PATH=$(dirname $1)
+
+cd $FILE_PATH
+
+FIRSTLINE=$(head -n 1 $FILE_NOEXT)
+cp $FILE_NOEXT /tmp # Backup
+if [ "$FIRSTLINE" == "ZIP" ]; then
+  MDC_ZIP=1
+  tail -n +2 "$FILE_NOEXT" > nozip-$FILE_NOEXT
+  rm $FILE_NOEXT
+  mv nozip-$FILE_NOEXT $FILE_NOEXT
+fi
+
+if [ -z "$LANDSCAPE" ]; then
+  LANDSCAPE="portrait"
+fi
+
+# Convert markdown to html
+pandoc \
+  --from=markdown_mmd+link_attributes+yaml_metadata_block+smart \
+  --standalone \
+  --to=html -V css=~/Documents/mdc/markdown.css \
+  --output=$FILE.html $FILE_NOEXT
+
+# Render complex javascript
+google-chrome-stable \
+  --headless \
+  --disable-gpu \
+  --dump-dom \
+  $FILE.html \
+  > $FILE.rendered.html
+
+# Convert to pdf
+wkhtmltopdf  \
+  -B 25mm \
+  -T 25mm \
+  -L 5mm \
+  -R 5mm \
+  -O $LANDSCAPE \
+  -q -s Letter \
+  --footer-html ~/Documents/mdc/footer.html \
+  --header-html ~/Documents/mdc/header.html \
+  $FILE.rendered.html $FILE.pdf
+
+sleep 0.2
+
+xdg-open $FILE.pdf
+
+rm $FILE.html $FILE.rendered.html
+rm -f $FILE.zip # Removes it if it exists already, doesn't care whether it exists
+
+if ! [ -z "$MDC_ZIP" ] && [ "$MDC_ZIP" -eq 1 ]; then
+  zip $FILE.zip $FILE.pdf $FILE_NOEXT
+
+  kill $(ps aux | grep $FILE.zip | awk '{print $2}')
+  sleep 0.2
+  xdg-open $FILE.zip
+fi
+
+if [ "$FIRSTLINE" == "ZIP" ]; then
+  sed -i '1s/^/ZIP\n/' $FILE_NOEXT
+fi
+
+}
+# &>/dev/null
